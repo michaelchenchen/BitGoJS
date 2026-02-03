@@ -3401,7 +3401,17 @@ export const solTokens = [
     UnderlyingAsset['sol:xnet'],
     SOL_TOKEN_FEATURES
   ),
-
+  solToken(
+    '15b45920-7f33-4b5a-bf7c-4ee6d0d5bdb7',
+    'sol:xnet2',
+    'XNET Mobile 2',
+    8,
+    'xNETbUB7cRb3AAu2pNG2pUwQcJ2BHcktfvSB8x1Pq6L',
+    'xNETbUB7cRb3AAu2pNG2pUwQcJ2BHcktfvSB8x1Pq6L',
+    UnderlyingAsset['sol:xnet2'],
+    SOL_TOKEN_FEATURES,
+    ProgramID.Token2022ProgramId
+  ),
   tsolToken(
     'b98c5a7a-49c5-45f1-a6ee-b08dff596a7d',
     'tsol:srm',

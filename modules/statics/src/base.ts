@@ -3338,6 +3338,7 @@ export enum UnderlyingAsset {
   'sol:home' = 'sol:home',
   'sol:oob' = 'sol:oob',
   'sol:xnet' = 'sol:xnet',
+  'sol:xnet2' = 'sol:xnet2',
   'sol:prcl' = 'sol:prcl',
   'sol:asp' = 'sol:asp',
 
