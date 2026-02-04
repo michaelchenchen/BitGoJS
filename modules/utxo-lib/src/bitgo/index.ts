@@ -11,6 +11,7 @@ export * from './parseInput';
 export * from './signature';
 export * from './transaction';
 export * from './transactionAmounts';
+export * from './feeValidation';
 export * from './types';
 export * from './Unspent';
 export * from './UtxoPsbt';
