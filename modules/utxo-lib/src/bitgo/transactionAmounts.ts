@@ -58,7 +58,7 @@ export function getTransactionAmountsFromPsbt(
 
   // Validate fee unless explicitly skipped
   if (!options.skipFeeValidation) {
-    validateFee(fee, inputAmount, options);
+    validateFee(fee, inputAmount, psbt.network, options);
   }
 
   return {

@@ -5,7 +5,8 @@ import {
   UtxoPsbt, 
   getTransactionAmountsFromPsbt,
   createPsbtForNetwork,
-  MAX_MONEY,
+  getMaxMoney,
+  getDefaultMaxFee,
 } from '../../src/bitgo';
 
 /**
@@ -30,6 +31,8 @@ describe('Fee Calculation Edge Cases (Security Critical)', function () {
   
   const network = networks.bitcoin;
   const MAX_INT64 = BigInt('9223372036854775807'); // 2^63 - 1
+  const MAX_MONEY = getMaxMoney(network); // Network-specific max supply
+  const DEFAULT_MAX_FEE = getDefaultMaxFee(network); // Network-specific default fee limit
 
   function createPsbtWithAmounts(
     inputAmounts: bigint[],
@@ -169,7 +172,7 @@ describe('Fee Calculation Edge Cases (Security Critical)', function () {
       
       assert.throws(
         () => getTransactionAmountsFromPsbt(psbt),
-        /exceeds Bitcoin's maximum supply/,
+        /exceeds coin's maximum supply/,
         'Should reject fee exceeding MAX_MONEY'
       );
     });
@@ -234,7 +237,7 @@ describe('Fee Calculation Edge Cases (Security Critical)', function () {
       // Fee would be astronomically high - should be rejected
       assert.throws(
         () => getTransactionAmountsFromPsbt(psbt),
-        /exceeds Bitcoin's maximum supply|exceeds int64 maximum/,
+        /exceeds coin's maximum supply|exceeds int64 maximum/,
         'Should reject fee near int64 max'
       );
     });
@@ -254,7 +257,7 @@ describe('Fee Calculation Edge Cases (Security Critical)', function () {
       // With validation, should be rejected
       assert.throws(
         () => getTransactionAmountsFromPsbt(psbt),
-        /exceeds Bitcoin's maximum supply/,
+        /exceeds coin's maximum supply/,
         'Should reject when fee exceeds MAX_MONEY'
       );
     });
@@ -275,7 +278,7 @@ describe('Fee Calculation Edge Cases (Security Critical)', function () {
       // With validation, should be rejected
       assert.throws(
         () => getTransactionAmountsFromPsbt(psbt),
-        /exceeds int64 maximum|exceeds Bitcoin's maximum supply/,
+        /exceeds int64 maximum|exceeds coin's maximum supply/,
         'Should reject fee exceeding int64 max'
       );
     });
@@ -417,7 +420,7 @@ describe('Fee Calculation Edge Cases (Security Critical)', function () {
       // With validation enabled, should throw
       assert.throws(
         () => getTransactionAmountsFromPsbt(psbt),
-        /exceeds Bitcoin's maximum supply/,
+        /exceeds coin's maximum supply/,
         'Should reject fee exceeding MAX_MONEY'
       );
     });
@@ -437,7 +440,7 @@ describe('Fee Calculation Edge Cases (Security Critical)', function () {
       // With validation enabled, should throw
       assert.throws(
         () => getTransactionAmountsFromPsbt(psbt),
-        /exceeds Bitcoin's maximum supply/,
+        /exceeds coin's maximum supply/,
         'Should reject fee exceeding MAX_MONEY'
       );
     });
@@ -464,7 +467,7 @@ describe('Fee Calculation Edge Cases (Security Critical)', function () {
       
       assert.throws(
         () => getTransactionAmountsFromPsbt(psbt),
-        /exceeds maximum allowed fee of 10000000 satoshis \(0\.1 BTC\)/,
+        /exceeds maximum allowed fee/,
         'Should reject fee exceeding default 0.1 BTC limit'
       );
     });
@@ -487,6 +490,94 @@ describe('Fee Calculation Edge Cases (Security Critical)', function () {
         maxFeePercentage: 90        // 90%
       });
       assert.strictEqual(amounts.fee, BigInt(40000000)); // 0.4 BTC (80% of input)
+    });
+  });
+
+  describe('Network-Specific Fee Limits', function () {
+    // Test that different networks have appropriate fee limits
+    const testNetworks = [
+      { name: 'bitcoin', network: networks.bitcoin, expectedMaxFee: BigInt('10000000'), coin: '0.1 BTC' },
+      { name: 'litecoin', network: networks.litecoin, expectedMaxFee: BigInt('100000000'), coin: '1 LTC' },
+      { name: 'dogecoin', network: networks.dogecoin, expectedMaxFee: BigInt('10000000000'), coin: '100 DOGE' },
+      { name: 'dash', network: networks.dash, expectedMaxFee: BigInt('10000000'), coin: '0.1 DASH' },
+      { name: 'zcash', network: networks.zcash, expectedMaxFee: BigInt('10000000'), coin: '0.1 ZEC' },
+    ];
+
+    testNetworks.forEach(({ name, network, expectedMaxFee, coin }) => {
+      it(`should use correct default max fee for ${name} (${coin})`, function () {
+        const actualMaxFee = getDefaultMaxFee(network);
+        assert.strictEqual(
+          actualMaxFee,
+          expectedMaxFee,
+          `${name} default max fee should be ${expectedMaxFee} (${coin})`
+        );
+      });
+
+      it(`should reject fees exceeding default for ${name}`, function () {
+        const psbt = createPsbtForNetwork({ network });
+        const tooHighFee = expectedMaxFee + BigInt(1000);
+        
+        psbt.addInput({
+          hash: Buffer.alloc(32, 1),
+          index: 0,
+          witnessUtxo: {
+            script: Buffer.alloc(20),
+            value: tooHighFee + BigInt(10000),
+          },
+        });
+        
+        psbt.addOutput({
+          script: Buffer.alloc(20),
+          value: BigInt(10000),
+        });
+        
+        // Fee will be tooHighFee, should be rejected
+        assert.throws(
+          () => getTransactionAmountsFromPsbt(psbt),
+          /exceeds maximum allowed fee/,
+          `${name} should reject fee exceeding ${coin}`
+        );
+      });
+
+      it(`should allow fees just under default for ${name}`, function () {
+        const psbt = createPsbtForNetwork({ network });
+        const okFee = expectedMaxFee - BigInt(1000);
+        // Make input much larger than fee to avoid percentage check
+        const inputValue = okFee * BigInt(10); // Fee will be 10% of input
+        
+        psbt.addInput({
+          hash: Buffer.alloc(32, 1),
+          index: 0,
+          witnessUtxo: {
+            script: Buffer.alloc(20),
+            value: inputValue,
+          },
+        });
+        
+        psbt.addOutput({
+          script: Buffer.alloc(20),
+          value: inputValue - okFee,
+        });
+        
+        // Fee will be okFee (10% of input), should pass
+        const amounts = getTransactionAmountsFromPsbt(psbt);
+        assert.strictEqual(amounts.fee, okFee, `${name} should allow fee just under limit`);
+      });
+    });
+
+    it('should have appropriate supply limits for all networks', function () {
+      const supplyLimits = [
+        { network: networks.bitcoin, expected: BigInt('2100000000000000'), desc: '21M BTC' },
+        { network: networks.litecoin, expected: BigInt('8400000000000000'), desc: '84M LTC' },
+        { network: networks.dogecoin, expected: BigInt('100000000000000000000'), desc: '100B DOGE' },
+        { network: networks.dash, expected: BigInt('1900000000000000'), desc: '~19M DASH' },
+        { network: networks.zcash, expected: BigInt('2100000000000000'), desc: '21M ZEC' },
+      ];
+
+      supplyLimits.forEach(({ network, expected, desc }) => {
+        const actual = getMaxMoney(network);
+        assert.strictEqual(actual, expected, `Supply limit should be ${desc}`);
+      });
     });
   });
 });
